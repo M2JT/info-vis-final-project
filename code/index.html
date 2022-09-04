@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>U.S. Median Household Income</title>
+	<script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://d3js.org/d3-path.v2.min.js"></script>
+    <script src="https://d3js.org/d3-shape.v2.min.js"></script>
+    <script src="https://d3js.org/topojson.v1.min.js"></script>
+    <script src="https://d3js.org/d3-array.v2.min.js"></script>
+    <script src="https://d3js.org/d3-geo.v2.min.js"></script>
+    <script src="https://d3js.org/d3-geo-projection.v3.min.js"></script>
+	<script crossingin src="https://unpkg.com/react/umd/react.development.js"></script>
+    <script crossingin src="https://unpkg.com/react-dom/umd/react-dom.development.js"></script>
+    <script crossingin src="https://unpkg.com/babel-standalone/babel.js"></script>
+	<link rel="icon" type="image/png" sizes="32x32" href="icon/money_icon.png">
+	<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+	<div id="container">
+		<header>
+			<h1><a href="index.html">U.S. Median Household Income By Regions</a></h1>
+		</header>
+
+		<nav>
+			<a href="midwest.html">The Midwest</a>
+	        <a href="northeast.html">The Northeast</a>
+	        <a href="west.html">The West</a>
+	        <a href="south.html">The South</a>
+		</nav>
+
+		<main>
+			<div id="root"></div>
+    		<script type="text/babel">
+				const csvUrl = '../data/state_mhi_pop.csv';
+				const mapUrl = '../data/us_states_map.json';
+
+				function useData(csvPath){
+					const [dataAll, setData] = React.useState(null);
+					React.useEffect(() => {
+						d3.csv(csvPath).then(data => {
+							data.forEach(d => {
+								d.median_income = +d.median_income;
+								d.population = +d.population;
+								d.latitude = +d.latitude;
+								d.longitude = +d.longitude;
+							});
+							setData(data);
+						});
+					}, []);
+					return dataAll;
+				}
+				function useMap(jsonPath) {
+					const [data, setData] = React.useState(null);
+					React.useEffect(() => {
+						d3.json(jsonPath).then(geoJsonData => {
+							setData(geoJsonData);
+						})
+					}, []);
+					return data;
+				}
+				function SymbolMap(props) {
+					const {x, y, map, data, selectedState, setSelectedState,
+						setTooltipX, setTooltipY} = props;
+
+					const getColor = (selectedState, state_name_full) => {
+						return selectedState&&state_name_full===selectedState ? "orange" : "#45b4d4";
+					}
+
+					const projection = d3.geoMercator().fitSize([6000, 3000], map);
+					const path = d3.geoPath(projection);
+					const radius = d3.scaleLinear().range([5, 20])
+						.domain([d3.min(data, d => d.median_income), d3.max(data, d => d.median_income)]);
+					
+					if(selectedState == null){
+						return <g transform={`translate(${x}, ${y})`}>
+							{map.features.map((feature, idx) => {
+								return <path key={idx+"boundary"} className={"boundary"} d={path(feature)} />
+							})}
+							{data.map(d => {
+								const [x, y] =  projection([d.longitude, d.latitude]);
+								return <circle key={"state" + d.longitude+d.latitude} 
+								cx={x} cy={y} r={radius(d.median_income)} opacity={0.7} 
+								fill={getColor(selectedState, d.state_name_full)}
+								stroke={"black"} onMouseEnter={(event)=> {
+									setSelectedState(d.state_name_full);
+								}} 
+								onMouseOut={()=> {
+									setSelectedState(null);
+								}} />
+							})}
+						</g>
+					}
+					else{
+						return <g transform={`translate(${x}, ${y})`}>
+							{map.features.map((feature, idx) => {
+								return <path key={idx+"boundary"} className={"boundary"} d={path(feature)} />
+							})}
+							{data.map(d => {
+								const [x, y] = projection([d.longitude, d.latitude]);
+								return <circle key={"state" + d.longitude+d.latitude} 
+								cx={x} cy={y} r={radius(d.median_income)} opacity={0.7} 
+								fill={getColor(selectedState, d.state_name_full)}
+								stroke={"black"} onMouseEnter={(event)=> {
+									setSelectedState(d.state_name_full);
+								}} 
+								onMouseOut={()=> {
+									setSelectedState(null);
+								}} />
+							})}
+							{data.filter(d => d.state_name_full === selectedState).map( d => {
+								const [x, y] = projection([d.longitude, d.latitude]);
+								return <circle key={"state" + d.longitude+d.latitude} 
+								cx={x} cy={y} r={radius(d.median_income)}
+								fill={getColor(selectedState, d.state_name_full)}
+								stroke={"black"} onMouseEnter={(event)=> {
+									setSelectedState(d.state_name_full);
+									setTooltipX(event.pageX);
+									setTooltipY(event.pageY);
+								}} 
+								onMouseOut={()=> {
+									setSelectedState(null);
+									setTooltipX(null);
+									setTooltipY(null);
+								}} />
+							})}
+						</g>
+					}
+				}
+				function Tooltip(props){
+					const {d, left, top} = props;
+
+					let pop_format = d3.format(","),
+					mhi_format = d3.format(",.2f");
+
+					if(left === null){
+						return <div></div>;
+					} 
+					else{
+						const divStyle = {
+							position: "absolute",
+							textAlign: "center",
+							width: "150px",
+							height: "auto",
+							padding: "2px",
+							font: "15px sans-serif",
+							background: "orange",
+							border: "0px",
+							borderRadius: "8px",
+							pointerEvents: "none",
+							left: `${left+10}px`,
+							top: `${top}px`
+						};
+						return <div style={divStyle} >
+							<p>Year: {d.year}</p>
+							<p>State: {d.state_name_full}</p>
+							<p>Capital: {d.capital}</p>
+							<p>Total Population: {pop_format(d.population)}</p>
+							<p>MHI: ${mhi_format(d.median_income)}</p>
+						</div>
+					};  
+				}
+				const Charts = () => {
+					const [year, setYear] = React.useState('0');
+					const [selectedState, setSelectedState] = React.useState(null);
+					const [tooltipX, setTooltipX] = React.useState(null);
+                	const [tooltipY, setTooltipY] = React.useState(null);
+
+					const dataAll = useData(csvUrl);
+					const map = useMap(mapUrl);
+
+					const YEAR = ['2020', '2019', '2018', '2017', '2016'];
+
+					if (!map || !dataAll) {
+						return <pre>Loading...</pre>;
+					};
+
+					const WIDTH = 1150;
+					const HEIGHT = 650;
+					const margin = { top: 20, right: 40, bottom: 160, left: 40, gap:40 };
+					const innerWidth = WIDTH - margin.left - margin.right - margin.gap;
+					const innerHeight = HEIGHT - margin.top - margin.bottom - margin.gap;
+
+					const data = dataAll.filter( d => {
+						return d.year == YEAR[year];
+					});
+
+					const changeHandler = (event) => {
+						setYear(event.target.value);
+					}
+
+					const selectedPoint = data.filter(d => d.state_name_full === selectedState)[0];
+
+					return <div>
+						<div id="index_slider">
+							<p>Slide to See All States' MHI in Different Year (2020-2016)</p>
+							<input key="slider" type='range' min='0' max='4' value={year} step='1' onChange={changeHandler}/>
+							<input key="yearText" type="text" value={YEAR[year]} readOnly/>
+						</div>
+						<svg width={WIDTH} height={HEIGHT}>
+							<g>
+								<SymbolMap x={-900} y={-1550} data={data} 
+								map={map} selectedState={selectedState} 
+								setSelectedState={setSelectedState}
+								setTooltipX={setTooltipX} setTooltipY={setTooltipY}/>
+							</g>
+						</svg>
+						<Tooltip d={selectedPoint} left={tooltipX} top={tooltipY}/>						
+					</div>
+				}
+				ReactDOM.render(<Charts/>, document.getElementById('root'));
+    		</script>
+		</main>
+
+		<button type="button" id="bg_color_btn"> Feeling Different Today? </button>
+		<p id="date"></p>
+		
+	</div>
+
+	<script src="js/main.js"></script>
+</body>
+</html>
